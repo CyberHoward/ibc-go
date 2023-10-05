@@ -7,6 +7,8 @@ import (
 	clienttypes "github.com/cosmos/ibc-go/v8/modules/core/02-client/types"
 	host "github.com/cosmos/ibc-go/v8/modules/core/24-host"
 	"github.com/cosmos/ibc-go/v8/modules/core/exported"
+	ibctm "github.com/cosmos/ibc-go/v8/modules/light-clients/07-tendermint"
+	ibctesting "github.com/cosmos/ibc-go/v8/testing"
 )
 
 func (suite *TypesTestSuite) TestVerifyHeaderGrandpa() {
@@ -704,63 +706,60 @@ func (suite *TypesTestSuite) TestUpdateStateGrandpa() {
 	}
 }*/
 
-// func (suite *TypesTestSuite) TestUpdateStateOnMisbehaviourTendermint() {
-// 	var path *ibctesting.Path
+func (suite *TypesTestSuite) TestUpdateStateOnMisbehaviourTendermint() {
+	var path *ibctesting.Path
 
-// 	testCases := []struct {
-// 		name     string
-// 		malleate func()
-// 		expPass  bool
-// 	}{
-// 		{
-// 			"success",
-// 			func() {},
-// 			true,
-// 		},
-// 	}
+	testCases := []struct {
+		name     string
+		malleate func()
+		expPass  bool
+	}{
+		{
+			"success",
+			func() {},
+			true,
+		},
+	}
 
-// 	for _, tc := range testCases {
-// 		suite.Run(tc.name, func() {
-// 			// reset suite to create fresh application state
-// 			suite.SetupWasmTendermint()
-// 			path = ibctesting.NewPath(suite.chainA, suite.chainB)
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			// reset suite to create fresh application state
+			suite.SetupWasmWithMockVM()
+			path = ibctesting.NewPath(suite.chainA, suite.chainB)
 
-// 			err := path.EndpointA.CreateClient()
-// 			suite.Require().NoError(err)
+			err := path.EndpointA.CreateClient()
+			suite.Require().NoError(err)
 
-// 			tc.malleate()
+			tc.malleate()
 
-// 			clientState := path.EndpointA.GetClientState()
-// 			clientStore := suite.chainA.App.GetIBCKeeper().ClientKeeper.ClientStore(suite.chainA.GetContext(), path.EndpointA.ClientID)
+			clientState := path.EndpointA.GetClientState()
+			clientStore := suite.chainA.App.GetIBCKeeper().ClientKeeper.ClientStore(suite.chainA.GetContext(), path.EndpointA.ClientID)
 
-// 			misbehaviourHeader, err := path.EndpointA.Chain.ConstructUpdateTMClientHeader(path.EndpointA.Counterparty.Chain, path.EndpointA.ClientID)
-// 			suite.Require().NoError(err)
-// 			tmMisbehaviour := &ibctm.Misbehaviour{
-// 				Header1: misbehaviourHeader,
-// 				Header2: misbehaviourHeader,
-// 			}
-// 			wasmData, err := suite.chainB.Codec.MarshalInterface(tmMisbehaviour)
-// 			suite.Require().NoError(err)
-// 			clientMessage := &types.ClientMessage{
-// 				Data: wasmData,
-// 			}
-// 			clientState.UpdateStateOnMisbehaviour(suite.chainA.GetContext(), suite.chainA.App.AppCodec(), clientStore, clientMessage)
+			misbehaviourHeader, err := path.EndpointA.Chain.ConstructUpdateTMClientHeader(path.EndpointA.Counterparty.Chain, path.EndpointA.ClientID)
+			suite.Require().NoError(err)
+			tmMisbehaviour := &ibctm.Misbehaviour{
+				Header1: misbehaviourHeader,
+				Header2: misbehaviourHeader,
+			}
+			wasmData, err := suite.chainB.Codec.MarshalInterface(tmMisbehaviour)
+			suite.Require().NoError(err)
+			clientMessage := &types.ClientMessage{
+				Data: wasmData,
+			}
+			clientState.UpdateStateOnMisbehaviour(suite.chainA.GetContext(), suite.chainA.App.AppCodec(), clientStore, clientMessage)
 
-// 			if tc.expPass {
-// 				clientStateBz := clientStore.Get(host.ClientStateKey())
-// 				suite.Require().NotEmpty(clientStateBz)
+			if tc.expPass {
+				clientStateBz := clientStore.Get(host.ClientStateKey())
+				suite.Require().NotEmpty(clientStateBz)
 
-// 				newClientState := clienttypes.MustUnmarshalClientState(suite.chainA.Codec, clientStateBz)
-// 				newWasmClientState := newClientState.(*types.ClientState)
+				newClientState := clienttypes.MustUnmarshalClientState(suite.chainA.Codec, clientStateBz)
+				newWasmClientState := newClientState.(*ibctm.ClientState)
 
-// 				var innerClientState exported.ClientState
-// 				err = suite.chainA.Codec.UnmarshalInterface(newWasmClientState.Data, &innerClientState)
-// 				suite.Require().NoError(err)
-// 				suite.Require().Equal(misbehaviourHeader.GetHeight(), innerClientState.(*ibctm.ClientState).FrozenHeight)
+				suite.Require().Equal(ibctm.FrozenHeight, newWasmClientState.FrozenHeight)
 
-// 				status := clientState.Status(suite.chainA.GetContext(), clientStore, suite.chainA.Codec)
-// 				suite.Require().Equal(exported.Frozen, status)
-// 			}
-// 		})
-// 	}
-// }
+				status := newWasmClientState.Status(suite.chainA.GetContext(), clientStore, suite.chainA.Codec)
+				suite.Require().Equal(exported.Frozen, status)
+			}
+		})
+	}
+}
