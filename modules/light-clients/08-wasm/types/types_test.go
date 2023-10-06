@@ -76,6 +76,14 @@ func setupTestingApp() (ibctesting.TestingApp, map[string]json.RawMessage) {
 func (suite *TypesTestSuite) SetupWasmWithMockVM() {
 	ibctesting.DefaultTestingAppInit = suite.setupWasmWithMockVM
 
+	suite.coordinator = ibctesting.NewCoordinator(suite.T(), 1)
+	suite.chainA = suite.coordinator.GetChain(ibctesting.GetChainID(1))
+}
+
+// SetupTwoWasmChainsWithMockVM sets up two mock cometbft chains with a mock vm.
+func (suite *TypesTestSuite) SetupTwoWasmChainsWithMockVM() {
+	ibctesting.DefaultTestingAppInit = suite.setupWasmWithMockVM
+
 	suite.coordinator = ibctesting.NewCoordinator(suite.T(), 2)
 	suite.chainA = suite.coordinator.GetChain(ibctesting.GetChainID(1))
 	suite.chainB = suite.coordinator.GetChain(ibctesting.GetChainID(2))
@@ -171,4 +179,8 @@ func (suite *TypesTestSuite) SetupWasmGrandpaWithChannel() {
 
 func TestWasmTestSuite(t *testing.T) {
 	testifysuite.Run(t, new(TypesTestSuite))
+}
+
+func getAltSigners(altVal *tmtypes.Validator, altPrivVal tmtypes.PrivValidator) map[string]tmtypes.PrivValidator {
+	return map[string]tmtypes.PrivValidator{altVal.Address.String(): altPrivVal}
 }

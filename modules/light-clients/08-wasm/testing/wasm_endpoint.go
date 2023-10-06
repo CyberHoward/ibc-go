@@ -14,6 +14,12 @@ type WasmEndpoint struct {
 	*ibctesting.Endpoint
 }
 
+// WasmPath contains two endpoints representing two wasm chains connected over IBC
+type WasmPath struct {
+	EndpointA *WasmEndpoint
+	EndpointB *WasmEndpoint
+}
+
 var (
 	CodeHash               = []byte("01234567012345670123456701234567")
 	contractClientState    = []byte{1}
@@ -25,6 +31,28 @@ var (
 func NewWasmEndpoint(chain *ibctesting.TestChain) *WasmEndpoint {
 	return &WasmEndpoint{
 		Endpoint: ibctesting.NewDefaultEndpoint(chain),
+	}
+}
+
+// NewWasmPath constructs an endpoint and clients for each wasm chain using the default values
+// for the endpoints. Each endpoint is updated to have a pointer to the
+// counterparty endpoint.
+func NewWasmPath(chainA, chainB *ibctesting.TestChain) *WasmPath {
+	endpointA := NewWasmEndpoint(chainA)
+	endpointB := NewWasmEndpoint(chainB)
+
+	err := endpointA.CreateClient()
+	require.NoError(endpointA.Chain.TB, err)
+
+	err = endpointB.CreateClient()
+	require.NoError(endpointB.Chain.TB, err)
+
+	endpointA.Counterparty = endpointB.Endpoint
+	endpointB.Counterparty = endpointA.Endpoint
+
+	return &WasmPath{
+		EndpointA: endpointA,
+		EndpointB: endpointB,
 	}
 }
 

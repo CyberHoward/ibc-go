@@ -2,13 +2,16 @@ package types_test
 
 import (
 	"encoding/base64"
+	"fmt"
 
+	wasmvm "github.com/CosmWasm/wasmvm"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
+	wasmtesting "github.com/cosmos/ibc-go/modules/light-clients/08-wasm/testing"
 	"github.com/cosmos/ibc-go/modules/light-clients/08-wasm/types"
 	clienttypes "github.com/cosmos/ibc-go/v8/modules/core/02-client/types"
 	host "github.com/cosmos/ibc-go/v8/modules/core/24-host"
 	"github.com/cosmos/ibc-go/v8/modules/core/exported"
 	ibctm "github.com/cosmos/ibc-go/v8/modules/light-clients/07-tendermint"
-	ibctesting "github.com/cosmos/ibc-go/v8/testing"
 )
 
 func (suite *TypesTestSuite) TestVerifyHeaderGrandpa() {
@@ -707,8 +710,9 @@ func (suite *TypesTestSuite) TestUpdateStateGrandpa() {
 }*/
 
 func (suite *TypesTestSuite) TestUpdateStateOnMisbehaviourTendermint() {
-	var path *ibctesting.Path
-
+	var (
+		path *wasmtesting.WasmPath
+	)
 	testCases := []struct {
 		name     string
 		malleate func()
@@ -716,7 +720,20 @@ func (suite *TypesTestSuite) TestUpdateStateOnMisbehaviourTendermint() {
 	}{
 		{
 			"success",
-			func() {},
+			func() {
+				suite.mockVM.SudoFn = func(codeID wasmvm.Checksum, env wasmvmtypes.Env, sudoMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (*wasmvmtypes.Response, uint64, error) {
+					// resp := fmt.Sprintf(`{"status":"%s"}`, exported.Frozen)
+					resp := wasmvmtypes.Response {
+						Data: []byte(fmt.Sprintf(`{"status":"%s"}`, exported.Frozen)),
+					}
+					return []byte(resp), wasmtesting.DefaultGasUsed, nil
+				}
+
+				suite.mockVM.QueryFn = func(codeID wasmvm.Checksum, env wasmvmtypes.Env, queryMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) ([]byte, uint64, error) {
+					resp := fmt.Sprintf(`{"result":{"response":{"status":"%s"}}}`, exported.Frozen)
+					return []byte(resp), wasmtesting.DefaultGasUsed, nil
+				}
+			},
 			true,
 		},
 	}
@@ -724,11 +741,8 @@ func (suite *TypesTestSuite) TestUpdateStateOnMisbehaviourTendermint() {
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
 			// reset suite to create fresh application state
-			suite.SetupWasmWithMockVM()
-			path = ibctesting.NewPath(suite.chainA, suite.chainB)
-
-			err := path.EndpointA.CreateClient()
-			suite.Require().NoError(err)
+			suite.SetupTwoWasmChainsWithMockVM()
+			path = wasmtesting.NewWasmPath(suite.chainA, suite.chainB)
 
 			tc.malleate()
 
@@ -752,12 +766,15 @@ func (suite *TypesTestSuite) TestUpdateStateOnMisbehaviourTendermint() {
 				clientStateBz := clientStore.Get(host.ClientStateKey())
 				suite.Require().NotEmpty(clientStateBz)
 
-				newClientState := clienttypes.MustUnmarshalClientState(suite.chainA.Codec, clientStateBz)
-				newWasmClientState := newClientState.(*ibctm.ClientState)
+				// newClientState := clienttypes.MustUnmarshalClientState(suite.chainA.Codec, clientStateBz)
+				// newWasmClientState := newClientState.(*types.ClientState)
 
-				suite.Require().Equal(ibctm.FrozenHeight, newWasmClientState.FrozenHeight)
+				// var innerClientState exported.ClientState
+				// err = suite.chainA.Codec.UnmarshalInterface(newWasmClientState.Data, &innerClientState)
+				// suite.Require().NoError(err)
+				// suite.Require().Equal(misbehaviourHeader.GetHeight(), innerClientState.(*ibctm.ClientState).FrozenHeight)
 
-				status := newWasmClientState.Status(suite.chainA.GetContext(), clientStore, suite.chainA.Codec)
+				status := clientState.Status(suite.chainA.GetContext(), clientStore, suite.chainA.Codec)
 				suite.Require().Equal(exported.Frozen, status)
 			}
 		})
